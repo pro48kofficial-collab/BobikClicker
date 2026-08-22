@@ -57,6 +57,7 @@ setInterval(() => {
 }, 1000);
 
 const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
+http.listen(PORT, '0.0.0.0', () => {
     console.log(`Сервер успішно запущено на порту ${PORT}`);
 });
+                                     
