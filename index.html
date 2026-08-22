@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Бобік Клікер Онлайн</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+        body { background: #121214; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+
+        .phone-frame { width: 100%; max-width: 420px; height: 100%; max-height: 850px; background: #1a1a1e; display: flex; flex-direction: column; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.8); overflow: hidden; }
+        @media(min-width: 450px) { .phone-frame { border-radius: 30px; height: 90vh; border: 4px solid #333; } }
+
+        #loader { position: absolute; inset: 0; background: #121214; z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.5s; }
+        .spinner { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid #f39c12; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .header { padding: 15px; background: #222228; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #333; z-index: 10; }
+        .stat-box { font-size: 14px; }
+        .stat-box span { color: #f39c12; font-weight: bold; }
+
+        .content { flex: 1; overflow-y: auto; position: relative; display: flex; flex-direction: column; }
+        .tab-content { display: none; flex: 1; flex-direction: column; padding: 15px; }
+        .tab-content.active { display: flex; }
+
+        .clicker-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        .bobik-box { width: 220px; height: 220px; position: relative; cursor: pointer; transition: transform 0.1s; }
+        .bobik-box:active { transform: scale(0.95); }
+        .bobik-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 4px solid #f39c12; background: #333; }
+        
+        .outfit-layer { position: absolute; pointer-events: none; transition: all 0.2s; }
+        #item-cap { top: -15px; left: 60px; width: 100px; z-index: 5; }
+        #item-glasses { top: 75px; left: 55px; width: 110px; z-index: 5; }
+        #item-chain { top: 145px; left: 70px; width: 80px; z-index: 5; }
+
+        .king-crown { position: absolute; top: -35px; left: 50%; transform: translateX(-50%); font-size: 32px; animation: bounce 0.8s infinite alternate; display: none; z-index: 10; }
+        @keyframes bounce { 0% { transform: translate(-50%, 0); } 100% { transform: translate(-50%, -8px); } }
+
+        .click-pop { position: absolute; color: #2ecc71; font-weight: bold; font-size: 20px; animation: floatUp 0.6s ease-out forwards; pointer-events: none; }
+        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-50px); } }
+
+        .shop-list, .city-list { display: flex; flex-direction: column; gap: 10px; }
+        .shop-item { background: #222228; padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; }
+        .shop-info h4 { font-size: 15px; margin-bottom: 3px; }
+        .shop-info p { font-size: 12px; color: #aaa; }
+        .buy-btn { background: #f39c12; color: #121214; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .buy-btn:disabled { background: #444; color: #777; cursor: not-allowed; }
+
+        .leader-tabs { display: flex; gap: 10px; margin-bottom: 10px; }
+        .l-tab { flex: 1; background: #222228; border: none; padding: 8px; color: #fff; border-radius: 8px; cursor: pointer; font-size: 12px; }
+        .l-tab.active { background: #f39c12; color: #121214; font-weight: bold; }
+        .leader-item { display: flex; justify-content: space-between; padding: 10px; background: #222228; margin-bottom: 6px; border-radius: 8px; font-size: 14px; }
+        .leader-item.is-me { border: 1px solid #f39c12; }
+
+        .nav-bar { display: flex; background: #18181c; border-top: 2px solid #333; height: 60px; }
+        .nav-btn { flex: 1; background: none; border: none; color: #777; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; gap: 4px; }
+        .nav-btn.active { color: #f39c12; }
+        .nav-btn svg { width: 20px; height: 20px; fill: currentColor; }
+    </style>
+</head>
+<body>
+
+    <div class="phone-frame">
+        <div id="loader">
+            <div class="spinner"></div>
+            <h3>Завантаження Бобік-світу...</h3>
+        </div>
+
+        <div class="header">
+            <div class="stat-box">💰 Коіни: <span id="coins-display">0</span></div>
+            <div class="stat-box">⚡ Пасив: <span id="passive-display">0</span>/с</div>
+        </div>
+
+        <div class="content">
+            <!-- Клікер -->
+            <div id="tab-clicker" class="tab-content active">
+                <div class="clicker-container">
+                    <div id="crown-icon" class="king-crown">👑</div>
+                    <div class="bobik-box" id="click-btn">
+                        <img src="https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=400" alt="Бобік" class="bobik-img" id="bobik-photo">
+                        <img id="item-cap" class="outfit-layer" src="" style="display:none;" alt="Кепка">
+                        <img id="item-glasses" class="outfit-layer" src="" style="display:none;" alt="Окуляри">
+                        <img id="item-chain" class="outfit-layer" src="" style="display:none;" alt="Ланцюг">
+                    </div>
+                    <p style="margin-top: 20px; color: #777; font-size: 13px;">Тапай по Бобіку!</p>
+                </div>
+            </div>
+
+            <!-- Магазин одягу -->
+            <div id="tab-shop" class="tab-content">
+                <h3 style="margin-bottom: 12px;">👕 Гардероб Бобіка</h3>
+                <div class="shop-list" id="clothing-shop"></div>
+            </div>
+
+            <!-- Місто -->
+            <div id="tab-city" class="tab-content">
+                <h3 style="margin-bottom: 12px;">🏙️ Місто та Бізнес</h3>
+                <div class="city-list" id="city-shop"></div>
+            </div>
+
+            <!-- Топ гравців -->
+            <div id="tab-leaders" class="tab-content">
+                <div class="leader-tabs">
+                    <button class="l-tab active" onclick="switchLeaderTab('coins', event)">По коінах</button>
+                    <button class="l-tab" onclick="switchLeaderTab('passive', event)">По пасиву</button>
+                </div>
+                <div id="leaderboard-list"></div>
+            </div>
+        </div>
+
+        <!-- Навігація -->
+        <div class="nav-bar">
+            <button class="nav-btn active" onclick="switchTab('clicker', this)">Тапати</button>
+            <button class="nav-btn" onclick="switchTab('shop', this)">Одяг</button>
+            <button class="nav-btn" onclick="switchTab('city', this)">Місто</button>
+            <button class="nav-btn" onclick="switchTab('leaders', this)">Топ</button>
+        </div>
+    </div>
+
+<script>
+    const socket = io();
+
+    let player = {
+        name: "Бродяга_" + Math.floor(Math.random() * 900 + 100),
+        coins: 0,
+        passive: 0,
+        clickPower: 1,
+        inventory: [],
+        equipped: {}
+    };
+
+    const clothingItems = [
+        { id: 'cap', name: 'Крута Кепка', type: 'cap', cost: 100, img: 'https://cdn-icons-png.flaticon.com/512/3067/3067406.png' },
+        { id: 'glasses', name: 'Сонцезахисні окуляри', type: 'glasses', cost: 350, img: 'https://cdn-icons-png.flaticon.com/512/2965/2965567.png' },
+        { id: 'chain', name: 'Золотий ланцюг', type: 'chain', cost: 1000, img: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png' }
+    ];
+
+    const cityBuildings = [
+        { id: 'budka', name: 'Будка з підігрівом', cost: 50, passiveInc: 1, count: 0 },
+        { id: 'market', name: 'Кіоск з ковбасою', cost: 300, passiveInc: 6, count: 0 },
+        { id: 'factory', name: 'Завод корму', cost: 1500, passiveInc: 30, count: 0 },
+        { id: 'skyscraper', name: 'Бобік-Плаза', cost: 8000, passiveInc: 150, count: 0 }
+    ];
+
+    let gameState = { players: {}, kingId: null, topCoins: [], topPassive: [] };
+    let currentLeaderMode = 'coins';
+
+    function loadGame() {
+        const saved = localStorage.getItem('bobik_save');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                player.coins = parsed.coins || 0;
+                player.passive = parsed.passive || 0;
+                player.clickPower = parsed.clickPower || 1;
+                player.inventory = parsed.inventory || [];
+                player.equipped = parsed.equipped || {};
+                cityBuildings.forEach(b => {
+                    if (parsed.buildings && parsed.buildings[b.id]) {
+                        b.count = parsed.buildings[b.id];
+                    }
+                });
+            } catch(e) { console.error(e); }
+        }
+    }
+
+    function saveGame() {
+        let bCounts = {};
+        cityBuildings.forEach(b => bCounts[b.id] = b.count);
+        localStorage.setItem('bobik_save', JSON.stringify({
+            coins: player.coins,
+            passive: player.passive,
+            clickPower: player.clickPower,
+            inventory: player.inventory,
+            equipped: player.equipped,
+            buildings: bCounts
+        }));
+    }
+
+    loadGame();
+    setTimeout(() => {
+        document.getElementById('loader').style.opacity = 0;
+        setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
+    }, 800);
+
+    socket.emit('join-game', player);
+
+    document.getElementById('click-btn').addEventListener('click', (e) => {
+        let isKing = (socket.id === gameState.kingId);
+        let earned = player.clickPower * (isKing ? 2 : 1);
+        
+        player.coins += earned;
+        updateUI();
+        saveGame();
+        socket.emit('update-stats', player);
+
+        createPopText(e.clientX, e.clientY, `+${earned}`);
+    });
+
+    function createPopText(x, y, text) {
+        let el = document.createElement('div');
+        el.className = 'click-pop';
+        el.innerText = text;
+        el.style.left = (x - 15) + 'px';
+        el.style.top = (y - 30) + 'px';
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 600);
+    }
+
+    function renderShop() {
+        let container = document.getElementById('clothing-shop');
+        container.innerHTML = '';
+        clothingItems.forEach(item => {
+            let owned = player.inventory.includes(item.id);
+            let equipped = player.equipped[item.type] === item.id;
+
+            let html = `
+                <div class="shop-item">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <img src="${item.img}" width="36" height="36">
+                        <div class="shop-info">
+                            <h4>${item.name}</h4>
+                            <p>${item.cost} коінів</p>
+                        </div>
+                    </div>
+                    <div>
+                        ${!owned ? `<button class="buy-btn" onclick="buyItem('${item.id}', ${item.cost})" ${player.coins < item.cost ? 'disabled' : ''}>Купити</button>` :
+                                  `<button class="buy-btn" style="background:${equipped?'#e74c3c':'#2ecc71'};" onclick="toggleEquip('${item.id}', '${item.type}')">${equipped?'Зняти':'Одягнути'}</button>`}
+                    </div>
+                </div>
+            `;
+            container.innerHTML += html;
+        });
+    }
+
+    function buyItem(id, cost) {
+        if (player.coins >= cost) {
+            player.coins -= cost;
+            player.inventory.push(id);
+            saveGame();
+            renderShop();
+            updateUI();
+        }
+    }
+
+    function toggleEquip(id, type) {
+        if (player.equipped[type] === id) {
+            player.equipped[type] = null;
+        } else {
+            player.equipped[type] = id;
+        }
+        updateOutfitDisplay();
+        renderShop();
+        saveGame();
+    }
+
+    function updateOutfitDisplay() {
+        ['cap', 'glasses', 'chain'].forEach(type => {
+            let imgElem = document.getElementById(`item-${type}`);
+            let itemId = player.equipped[type];
+            if (itemId) {
+                let itemObj = clothingItems.find(i => i.id === itemId);
+                imgElem.src = itemObj.img;
+                imgElem.style.display = 'block';
+            } else {
+                imgElem.style.display = 'none';
+            }
+        });
+    }
+
+    function renderCity() {
+        let container = document.getElementById('city-shop');
+        container.innerHTML = '';
+        cityBuildings.forEach(b => {
+            let html = `
+                <div class="shop-item">
+                    <div class="shop-info">
+                        <h4>${b.name} (К-ть: ${b.count})</h4>
+                        <p>Дохід: +${b.passiveInc}/с | Ціна: ${b.cost}</p>
+                    </div>
+                    <button class="buy-btn" onclick="buyBuilding('${b.id}', ${b.cost}, ${b.passiveInc})" ${player.coins < b.cost ? 'disabled' : ''}>Купити</button>
+                </div>
+            `;
+            container.innerHTML += html;
+        });
+    }
+
+    function buyBuilding(id, cost, passiveInc) {
+        if (player.coins >= cost) {
+            player.coins -= cost;
+            player.passive += passiveInc;
+            let b = cityBuildings.find(x => x.id === id);
+            b.count++;
+            b.cost = Math.floor(b.cost * 1.15);
+            saveGame();
+            renderCity();
+            updateUI();
+        }
+    }
+
+    function updateUI() {
+        document.getElementById('coins-display').innerText = player.coins;
+        document.getElementById('passive-display').innerText = player.passive;
+        if(document.getElementById('tab-shop').classList.contains('active')) renderShop();
+        if(document.getElementById('tab-city').classList.contains('active')) renderCity();
+    }
+
+    function switchTab(tabName, btn) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+        
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+        btn.classList.add('active');
+
+        if (tabName === 'shop') renderShop();
+        if (tabName === 'city') renderCity();
+        if (tabName === 'leaders') renderLeaderboard();
+    }
+
+    function switchLeaderTab(mode, event) {
+        currentLeaderMode = mode;
+        document.querySelectorAll('.l-tab').forEach(el => el.classList.remove('active'));
+        event.target.classList.add('active');
+        renderLeaderboard();
+    }
+
+    function renderLeaderboard() {
+        let listContainer = document.getElementById('leaderboard-list');
+        listContainer.innerHTML = '';
+        
+        let list = (currentLeaderMode === 'coins') ? gameState.topCoins : gameState.topPassive;
+
+        if (!list || list.length === 0) {
+            listContainer.innerHTML = `<p style="text-align:center; color:#777; margin-top:20px;">Немає гравців у топі</p>`;
+            return;
+        }
+
+        list.forEach((p, index) => {
+            let isMe = (p.id === socket.id);
+            let val = (currentLeaderMode === 'coins') ? `${p.coins} 💰` : `${p.passive} ⚡/с`;
+            let crown = (index === 0 && currentLeaderMode === 'coins') ? '👑 ' : '';
+
+            let html = `
+                <div class="leader-item ${isMe ? 'is-me' : ''}">
+                    <span>${index + 1}. ${crown}${p.name} ${isMe ? '(Ти)' : ''}</span>
+                    <span style="font-weight:bold; color:#f39c12;">${val}</span>
+                </div>
+            `;
+            listContainer.innerHTML += html;
+        });
+    }
+
+    socket.on('game-state', (state) => {
+        gameState = state;
+        let crownElem = document.getElementById('crown-icon');
+        if (socket.id === state.kingId) {
+            crownElem.style.display = 'block';
+        } else {
+            crownElem.style.display = 'none';
+        }
+
+        if (state.players && state.players[socket.id]) {
+            player.coins = state.players[socket.id].coins;
+            updateUI();
+        }
+
+        if (document.getElementById('tab-leaders').classList.contains('active')) {
+            renderLeaderboard();
+        }
+    });
+
+    updateOutfitDisplay();
+</script>
+</body>
+  </html>
+  
